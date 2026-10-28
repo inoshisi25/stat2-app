@@ -1,0 +1,12 @@
+{
+  "name": "stat2-app",
+  "version": "2.0.0",
+  "private": true,
+  "description": "統計検定2級 対策アプリ(ブラウザ・スマホで動く問題演習)",
+  "scripts": {
+    "build": "node scripts/build-data.js",
+    "tables": "python3 scripts/make-tables.py",
+    "test": "node scripts/test-gen.js 300",
+    "start": "node scripts/serve.js 8000"
+  }
+}
