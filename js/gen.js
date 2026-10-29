@@ -709,6 +709,398 @@ def('g_mreg','回帰分析と分散分析','重回帰の出力表(解釈・モ�
   explanation:`Ⅰ: モデルAで5%有意でない説明変数は ${drop.map(r=>r.n).join('、')}。${t[0]?'すべて除かれているので正しい。':'Bに残っているものがあるので誤り。'}\nⅡ: 調整済み $R^2$ は A ${fx(aA,4)}、B ${fx(aB,4)} なので${t[1]?'Bが選ばれ正しい':'Aが選ばれ誤り'}。決定係数そのものは変数の多いAが常に大きい。\nⅢ: F統計量は A ${fx(Fs(R2,p),2)}、B ${fx(Fs(R2b,kb),2)} で、いずれも5%の棄却点(Aでは約 ${cA})より大きいので正しい。`};
 });
 
+// =====================================================================
+// 追加の生成器(過去問の出題範囲・形式・典型的な誤答にならう。題材と数値は独自)
+// =====================================================================
+const Cb=(a,b)=>{if(b<0||b>a)return 0;let c=1;for(let i=0;i<b;i++)c=c*(a-i)/(i+1);return c};
+const fq=(a,d1,d2)=>{const T=TB[a===0.05?'f05':'f025'],i=T.df2.indexOf(d2),j=T.df1.indexOf(d1);return i<0||j<0?NaN:T.v[i][j]};
+const pcf=d=>v=>fx(v,d)+'%';
+const med=a=>{const s=[...a].sort((x,y)=>x-y),n=s.length;return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2};
+// 中央値を除いて下半分・上半分の中央値を四分位数とする
+const quart=a=>{const s=[...a].sort((x,y)=>x-y),n=s.length,h=Math.floor(n/2);return[med(s.slice(0,h)),med(s),med(s.slice(n-h))]};
+const usd=a=>{const m=mean(a);return Math.sqrt(sum(a.map(v=>(v-m)**2))/(a.length-1))};
+const sig=(b,t)=>b?t+'(棄却される)':t+'(棄却されない)';
+const dec=(rej)=>rej?'帰無仮説は棄却される':'帰無仮説は棄却されない';
+// 小さな折れ線グラフ(値ラベルなし)
+function svgMini(vals,title,labels){
+ const N=nice(Math.min(...vals),Math.max(...vals)),L=40,B=26,T=24,h=170,sx=i=>L+(i+0.5)*(W-L-MR)/vals.length,sy=v=>h-B-(v-N.lo)/(N.hi-N.lo||1)*(h-B-T);
+ let s=`<line class="ax" x1="${L}" y1="${T}" x2="${L}" y2="${h-B}"/>`;
+ for(let v=N.lo;v<=N.hi+1e-9;v+=N.s)s+=`<line class="gr" x1="${L}" y1="${sy(v)}" x2="${W-MR}" y2="${sy(v)}"/>`+tx(L-4,sy(v)+3,+fx(v,2),'end','sm');
+ if(N.lo<0&&N.hi>0)s+=`<line class="ax" x1="${L}" y1="${sy(0)}" x2="${W-MR}" y2="${sy(0)}"/>`;
+ s+=`<polyline class="ln" points="${vals.map((v,i)=>sx(i)+','+sy(v)).join(' ')}"/>`+vals.map((v,i)=>`<circle class="pt" cx="${sx(i)}" cy="${sy(v)}" r="2.6"/>`).join('');
+ if(labels)labels.forEach((l,i)=>{if(i%2===0)s+=tx(sx(i),h-B+13,l,'middle','sm')});
+ return svg(s+tx((L+W-MR)/2,15,title,'middle'),h);
+}
+
+// ===== データの基礎 =====
+def('d_qtile','データの基礎','四分位範囲と外れ値',R=>{
+ const n=R.pick([9,11,13]);let x=Array.from({length:n},()=>R.ri(10,60)).sort((a,b)=>a-b);
+ if(R.r()<0.5){const [q1,,q3]=quart(x),k=R.ri(0,2);for(let i=0;i<k;i++)x[n-1-i]=q3+1.5*(q3-q1)+R.ri(2,25);x=x.map(Math.round).sort((a,b)=>a-b)}
+ const [q1,md,q3]=quart(x),iqr=q3-q1,lo=q1-1.5*iqr,hi=q3+1.5*iqr,out=x.filter(v=>v<lo||v>hi).length,shown=R.shuf(x);
+ const stem=`次の ${n} 個のデータがある。\n$${shown.join(',\\ ')}$\n四分位数は、中央値を除いた下半分・上半分それぞれの中央値とする。`;
+ if(R.r()<0.5)return{question:`${stem}四分位範囲はいくらか。${ONE}`,...mc(R,iqr,[x[n-1]-x[0],q3-md,(q3-q1)/2,q3+q1],{d:1,min:0}),
+  explanation:`並べ替えると ${x.join(', ')}。$Q_1=${q1}$、中央値 $${md}$、$Q_3=${q3}$。四分位範囲 $=Q_3-Q_1=${iqr}$。`};
+ const C=['0個','1個','2個','3個','4個'];
+ return{question:`${stem}$Q_1-1.5\\times(Q_3-Q_1)$ 未満、または $Q_3+1.5\\times(Q_3-Q_1)$ より大きい値を外れ値とするとき、外れ値の個数はいくつか。${ONE}`,choices:C,answer:out+1,fixed:true,
+  explanation:`$Q_1=${q1}$、$Q_3=${q3}$、四分位範囲 ${iqr}。範囲は $[${fx(lo,1)},\\ ${fx(hi,1)}]$ で、その外にある値は ${out} 個。`};
+});
+// ヒストグラムに対応する箱ひげ図を選ぶ(図を選ぶ形式)
+def('d_boxpick','データの基礎','ヒストグラムと箱ひげ図の対応(図を選ぶ)',R=>{
+ const sh=R.pick(['右','左','対称']),x=Array.from({length:50},()=>{const u=R.r();const v=sh==='右'?8+85*u*u:sh==='左'?92-85*u*u:50+14*nrm(R);return Math.max(1,Math.min(99,Math.round(v)))}).sort((a,b)=>a-b);
+ const five=[x[0],x[12],(x[24]+x[25])/2,x[37],x[49]],f=Array(10).fill(0);x.forEach(v=>f[Math.min(9,Math.floor(v/10))]++);
+ const cl=v=>v.map(t=>Math.max(0,Math.min(100,t)));
+ const C=[five,cl([100-five[4],100-five[3],100-five[2],100-five[1],100-five[0]]),cl([five[0],five[1]-10,five[2],five[3]+12,five[4]]),cl([five[0],five[1],(five[1]+five[3])/2+(sh==='右'?8:-8),five[3],five[4]]),cl([five[0]+6,five[1]+12,five[2]+12,five[3]+12,Math.min(100,five[4]+8)])];
+ if(sh==='対称')C[1]=cl([five[0]+15,five[1]+4,five[2]+15,five[3]+4,five[4]]);
+ const ord=R.shuf([0,1,2,3,4]),g=ord.map((k,i)=>({name:'①②③④⑤'[i],v:C[k].map(v=>Math.round(v))}));
+ return{fig:svgHist([0,10,20,30,40,50,60,70,80,90,100],f,'(点)')+svgBox(g,0,100,10),question:`上の図は、ある試験を受けた50人の得点のヒストグラムである。このデータの箱ひげ図として最も適切なものを、下の図の①〜⑤のうちから一つ選べ(ひげの端は最小値・最大値)。`,
+  choices:['①','②','③','④','⑤'].map(c=>c+'の箱ひげ図'),answer:ord.indexOf(0)+1,fixed:true,
+  explanation:`データの5数要約は 最小値 ${five[0]}、$Q_1$ ${five[1]}、中央値 ${five[2]}、$Q_3$ ${five[3]}、最大値 ${five[4]}。\n${sh==='対称'?'左右対称な分布なので、中央値が箱のほぼ中央にある。':`${sh}に裾の長い分布なので、${sh}側のひげが長く、中央値は箱の${sh==='右'?'左':'右'}寄りになる。`}`};
+});
+def('d_cum','データの基礎','累積相対度数',R=>{
+ const k=6,w=R.pick([5,10]),lo=R.pick([0,20,40]),f=Array.from({length:k},()=>R.ri(2,15)),N=sum(f),cum=f.map((_,i)=>sum(f.slice(0,i+1))/N),cls=i=>`${lo+i*w}〜${lo+(i+1)*w}`;
+ const fig=tbl(['階級',...f.map((_,i)=>cls(i))],[['度数',...f]]);
+ if(R.r()<0.5){const j=R.ri(1,4);return{fig,question:`次の度数分布表(${N}人)で、${cls(j)}の階級までの累積相対度数はいくらか。${ONE}`,...mc(R,cum[j],[f[j]/N,cum[j-1],sum(f.slice(0,j+1)),cum[j+1]??cum[j]*1.2],{d:3,min:0,max:1}),
+  explanation:`累積度数は ${f.slice(0,j+1).join('+')}=${sum(f.slice(0,j+1))}。$${sum(f.slice(0,j+1))}/${N}=${fx(cum[j],3)}$。`}}
+ const p=R.pick([0.25,0.5,0.75,0.9]),ci=cum.findIndex(c=>c>=p-1e-9),idx=ordered(R,k,ci);
+ return{fig,question:`次の度数分布表(${N}人)で、小さい方から数えて全体の ${p*100}% にあたる値(累積相対度数が初めて ${p} 以上になるところ)が含まれる階級として、${ONE}`,choices:idx.map(cls),answer:idx.indexOf(ci)+1,fixed:true,
+  explanation:`累積相対度数は ${cum.map(c=>fx(c,3)).join(', ')}。初めて ${p} 以上になるのは${cls(ci)}の階級。`};
+});
+def('d_gini','データの基礎','ローレンツ曲線とジニ係数',R=>{
+ let s;do{const a=Array.from({length:4},()=>R.ri(3,24)).sort((x,y)=>x-y);s=[...a,100-sum(a)]}while(s[4]<s[3]||s[4]>60);
+ const Y=[0];s.forEach(v=>Y.push(Y[Y.length-1]+v/100));const A=sum(s.map((_,k)=>0.2*(Y[k]+Y[k+1])/2)),G=1-2*A;
+ return{fig:tbl(['所得階級(下位から)','第1','第2','第3','第4','第5'],[['人数の割合','20%','20%','20%','20%','20%'],['所得の割合',...s.map(v=>v+'%')]]),
+  question:`ある地域の世帯を所得の低い順に5等分したところ、所得の割合は次の表のとおりであった。ローレンツ曲線を各点を直線で結んで描くとき、ジニ係数はいくらか。${ONE}`,...mc(R,G,[A,1-A,0.5-A,(s[4]-s[0])/100],{d:3,min:0,max:1}),
+  explanation:`累積所得割合は ${Y.slice(1).map(v=>fx(v,2)).join(', ')}。ローレンツ曲線の下の面積は台形の和で $${fx(A,3)}$。\nジニ係数 $=1-2\\times${fx(A,3)}=${fx(G,3)}$(均等分布線との間の面積の2倍)。`};
+});
+def('d_pool','データの基礎','2つのグループを合わせた分散',R=>{
+ const n1=R.pick([10,20,30,40]),n2=R.pick([10,20,30,40]),m1=R.ri(40,70),m2=m1+R.pick([-1,1])*R.ri(4,15),v1=R.ri(4,20)*5,v2=R.ri(4,20)*5,N=n1+n2,m=(n1*m1+n2*m2)/N;
+ const v=(n1*(v1+(m1-m)**2)+n2*(v2+(m2-m)**2))/N,w=(n1*v1+n2*v2)/N;
+ return{question:`グループA(${n1}人)の得点の平均は ${m1}、分散は ${v1}、グループB(${n2}人)の平均は ${m2}、分散は ${v2} である(分散は人数で割ったもの)。2つのグループを合わせた ${N} 人の得点の分散はいくらか。${ONE}`,...mc(R,v,[w,(v1+v2)/2,v-w,w+(m1-m2)**2],{d:2,min:0}),
+  explanation:`全体の平均 $=${fx(m,2)}$。各グループで $\\sum x^2/n=\\text{分散}+\\text{平均}^2$ を使うと、\n全体の分散 $=\\dfrac{${n1}(${v1}+(${m1}-${fx(m,2)})^2)+${n2}(${v2}+(${m2}-${fx(m,2)})^2)}{${N}}=${fx(v,2)}$。\n分散の加重平均 ${fx(w,2)} は、グループ間の平均の差を無視している。`};
+});
+def('d_units','データの基礎','単位の変換と平均・分散',R=>{
+ const m=R.ri(10,30),s=R.pick([2,3,4,5]),Fm=1.8*m+32,Fv=3.24*s*s,f=v=>+fx(v,2);
+ return{question:`ある地点の日最高気温(摂氏)の平均は ${m}℃、標準偏差は ${s}℃ であった。華氏 $F=1.8C+32$ に換算したとき、平均は(ア)°F、分散は(イ)である。(ア)と(イ)の組合せとして、${ONE}`,
+  ...parts(R,[f(Fm),f(Fv)],[[f(1.8*m),f(Fv)],[f(Fm),f(1.8*s*s)],[f(Fm),f(Fv+32)],[f(m+32),f(s*s)],[f(Fm),f(1.8*s)]]),
+  explanation:`平均は $1.8\\times${m}+32=${f(Fm)}$。分散は定数32の影響を受けず $1.8^2\\times${s}^2=${f(Fv)}$。標準偏差は $1.8\\times${s}=${f(1.8*s)}$。`};
+});
+
+// ===== 2変数・時系列 =====
+def('b_crosspct','2変数・時系列','クロス集計表の割合',R=>{
+ const a=R.ri(10,60),b=R.ri(10,60),c=R.ri(10,60),d=R.ri(10,60),N=a+b+c+d,ctx=R.pick([['男性','女性','賛成','反対'],['1年生','2年生','利用する','利用しない'],['都市部','郊外','満足','不満']]);
+ const fig=tbl(['',ctx[2],ctx[3],'計'],[[ctx[0],a,b,a+b],[ctx[1],c,d,c+d],['計',a+c,b+d,N]]);
+ return{fig,question:`次のクロス集計表で、${ctx[1]}のうち「${ctx[2]}」と答えた人の割合は何%か。${ONE}`,...mc(R,c/(c+d)*100,[c/(a+c)*100,c/N*100,(c+d)/N*100,a/(a+b)*100],{d:1,min:0,max:100,fmt:pcf(1)}),
+  explanation:`${ctx[1]}の合計 ${c+d} 人のうち${ctx[2]}は ${c} 人なので、$${c}/${c+d}=${fx(c/(c+d)*100,1)}\\%$。「${ctx[2]}のうち${ctx[1]}」の割合 ${fx(c/(a+c)*100,1)}% と混同しないこと。`};
+});
+def('b_spear','2変数・時系列','順位相関係数',R=>{
+ const n=R.pick([5,6]),r2=R.shuf([...Array(n).keys()].map(i=>i+1)),d2=sum(r2.map((v,i)=>(v-(i+1))**2)),rs=1-6*d2/(n*(n*n-1));if(d2===0)return null;
+ return{fig:tbl(['作品','A','B','C','D','E','F'].slice(0,n+1),[['審査員1',...Array.from({length:n},(_,i)=>i+1)],['審査員2',...r2]]),question:`${n}つの作品に2人の審査員が順位をつけた結果が次の表である。スピアマンの順位相関係数はいくらか。${ONE}`,
+  ...mc(R,rs,[1-d2/(n*(n*n-1)),-rs,1-6*d2/(n*n*n),1-2*d2/(n*(n*n-1))],{d:3,min:-1,max:1}),
+  explanation:`順位の差の2乗和 $\\sum d_i^2=${d2}$。$r_s=1-\\dfrac{6\\sum d_i^2}{n(n^2-1)}=1-\\dfrac{6\\times${d2}}{${n}\\times${n*n-1}}=${fx(rs,3)}$。`};
+});
+def('b_acf','2変数・時系列','自己相関係数(ラグ1)',R=>{
+ const n=6,x=Array.from({length:n},()=>R.ri(10,30)),m=mean(x),den=sum(x.map(v=>(v-m)**2));if(den===0)return null;
+ const r1=sum(x.slice(0,n-1).map((v,i)=>(v-m)*(x[i+1]-m)))/den;
+ return{fig:svgLine(x.map((_,i)=>'t='+(i+1)),x),question:`次の時系列 $x_1,\\dots,x_{${n}}$ のラグ1の自己相関係数 $r_1=\\dfrac{\\sum_{t=1}^{${n-1}}(x_t-\\bar x)(x_{t+1}-\\bar x)}{\\sum_{t=1}^{${n}}(x_t-\\bar x)^2}$ の値はいくらか。${ONE}`,
+  ...mc(R,r1,[corr(x.slice(0,n-1),x.slice(1)),-r1,r1*n/(n-1),r1*r1],{d:3,min:-1,max:1}),
+  explanation:`$\\bar x=${fx(m,3)}$、分母 $=${fx(den,3)}$、分子 $=${fx(r1*den,3)}$。$r_1=${fx(r1,3)}$。分母は全期間の偏差平方和を使う点が、2系列の相関係数とは異なる。`};
+});
+def('b_season','2変数・時系列','前年同期比と季節指数',R=>{
+ const base=R.ri(80,150),sf=[0.8,1.1,1.25,0.85].map(v=>v*R.ri(92,108)/100),y1=sf.map(v=>Math.round(base*v)),g=1+R.ri(2,12)/100,y2=sf.map(v=>Math.round(base*g*v*R.ri(97,103)/100)),k=R.ri(1,3);
+ const fig=tbl(['','第1四半期','第2四半期','第3四半期','第4四半期'],[['1年目',...y1],['2年目',...y2]]);
+ if(R.r()<0.5)return{fig,question:`ある商品の四半期ごとの売上(万個)が次の表である。2年目の第${k+1}四半期の前年同期比の増加率は何%か。${ONE}`,...mc(R,(y2[k]/y1[k]-1)*100,[(y2[k]/y2[k-1]-1)*100,y2[k]-y1[k],(y1[k]/y2[k]-1)*-100,(sum(y2)/sum(y1)-1)*100],{d:1,fmt:pcf(1)}),
+  explanation:`前年同期比は同じ四半期どうしで比べる。$${y2[k]}/${y1[k]}-1=${fx((y2[k]/y1[k]-1)*100,1)}\\%$。前期比(第${k}四半期との比較)は季節変動の影響を受ける。`};
+ const all=[...y1,...y2],si=(y1[k]+y2[k])/2/mean(all);
+ return{fig,question:`ある商品の四半期ごとの売上(万個)が次の表である。2年間の全体平均を1としたとき、第${k+1}四半期の季節指数(その四半期の2年間の平均÷全体平均)はいくらか。${ONE}`,...mc(R,si,[y2[k]/mean(y2),y1[k]/mean(y1),(y1[k]+y2[k])/sum(all),1/si],{d:3,min:0}),
+  explanation:`第${k+1}四半期の平均 $=${fx((y1[k]+y2[k])/2,1)}$、全体平均 $=${fx(mean(all),3)}$。季節指数 $=${fx(si,3)}$。`};
+});
+def('b_fisher','2変数・時系列','フィッシャー指数',R=>{
+ const L=R.ri(1000,1300)/10,P=L+R.pick([1,-1])*R.ri(100,200)/10,F=Math.sqrt(L*P);
+ return{question:`ある期間の物価について、ラスパイレス指数は ${fx(L,1)}、パーシェ指数は ${fx(P,1)} であった。フィッシャー指数はいくらか。${ONE}`,...mc(R,F,[(L+P)/2,L*P/100,2*L*P/(L+P),Math.max(L,P)],{d:2}),
+  explanation:`フィッシャー指数はラスパイレス指数とパーシェ指数の幾何平均。$\\sqrt{${fx(L,1)}\\times${fx(P,1)}}=${fx(F,2)}$。算術平均 ${fx((L+P)/2,2)} は誤り。`};
+});
+def('b_real','2変数・時系列','名目値・デフレーターと実質成長率',R=>{
+ const n1=R.ri(400,600),d1=R.ri(95,105),d2=d1*(1+R.ri(-2,5)/100),r=1+R.ri(-3,6)/100,n2=Math.round(n1*r*d2/d1),dd=+fx(d2,1),g=((n2/dd)/(n1/d1)-1)*100;
+ return{fig:tbl(['','1年目','2年目'],[['名目値(兆円)',n1,n2],['デフレーター',d1,fx(dd,1)]]),question:`ある国の名目値とデフレーター(基準年=100)が次の表のとおりであった。2年目の実質成長率は何%か。${ONE}`,
+  ...mc(R,g,[(n2/n1-1)*100,(n2/n1-1)*100-(dd/d1-1)*100+0.3,(dd/d1-1)*100,(n2/n1-1)*100+(dd/d1-1)*100],{d:2,fmt:pcf(2)}),
+  explanation:`実質値 = 名目値 ÷ デフレーター ×100。1年目 $${fx(n1/d1*100,2)}$、2年目 $${fx(n2/dd*100,2)}$。\n実質成長率 $=${fx(g,2)}\\%$(おおよそ 名目成長率 ${fx((n2/n1-1)*100,2)}% − 物価上昇率 ${fx((dd/d1-1)*100,2)}%)。`};
+});
+def('b_chain','2変数・時系列','前年比から指数を求める(連鎖)',R=>{
+ const y0=R.pick([2015,2018,2020]),rs=Array.from({length:4},()=>R.pick([-1,1,1])*R.ri(1,12)),I=100*rs.reduce((p,v)=>p*(1+v/100),1);
+ return{question:`ある商品の販売量の前年比増加率は、${rs.map((v,i)=>`${y0+i+1}年 ${v>0?'+':''}${v}%`).join('、')}であった。${y0}年を100とした${y0+4}年の指数はいくらか。${ONE}`,
+  ...mc(R,I,[100+sum(rs),100*(1+mean(rs)/100)**4+0.4,100*(1+rs[3]/100),100*rs.slice(0,3).reduce((p,v)=>p*(1+v/100),1)],{d:1}),
+  explanation:`前年比を掛け合わせる。$100\\times${rs.map(v=>fx(1+v/100,2)).join('\\times')}=${fx(I,1)}$。増加率を足すだけの ${100+sum(rs)} は誤り。`};
+});
+def('b_ewma','2変数・時系列','指数平滑法',R=>{
+ const a=R.pick([0.2,0.3,0.4,0.5]),x=Array.from({length:4},()=>R.ri(20,60));let S=x[0];const st=[S];for(let i=1;i<4;i++){S=a*x[i]+(1-a)*S;st.push(S)}
+ let S2=x[0];for(let i=1;i<4;i++)S2=(1-a)*x[i]+a*S2;
+ return{question:`時系列 $x_1=${x[0]},\\ x_2=${x[1]},\\ x_3=${x[2]},\\ x_4=${x[3]}$ に、平滑化定数 $\\alpha=${a}$ の指数平滑法 $S_t=\\alpha x_t+(1-\\alpha)S_{t-1}$($S_1=x_1$)を適用する。$S_4$ の値はいくらか。${ONE}`,
+  ...mc(R,S,[S2,mean(x),x[3],st[2]],{d:2}),
+  explanation:`$S_2=${fx(st[1],2)}$、$S_3=${fx(st[2],2)}$、$S_4=${a}\\times${x[3]}+${fx(1-a,1)}\\times${fx(st[2],2)}=${fx(S,2)}$。$\\alpha$ と $1-\\alpha$ を逆にしないこと。`};
+});
+// 問4〔2〕型: 指数の系列から前年比増加率のグラフを選ぶ
+def('b_yoypick','2変数・時系列','前年比増加率のグラフを選ぶ(図を選ぶ)',R=>{
+ const y0=R.pick([2008,2010,2012]),n=9,I=[100];for(let i=1;i<n;i++)I.push(+fx(I[i-1]*(1+(R.ri(-6,8)+(i>5?-4:0))/100),1));
+ const g=I.slice(1).map((v,i)=>(v/I[i]-1)*100),lab=I.slice(1).map((_,i)=>String(y0+i+1));
+ const C=[g,I.slice(1).map(v=>v-100),I.slice(1).map((v,i)=>v-I[i]+0*i).map((v,i)=>v*1.6),g.map(v=>-v),[0,...g.slice(0,-1)]];
+ const ord=R.shuf([0,1,2,3,4]);const figs=ord.map((k,i)=>svgMini(C[k],'①②③④⑤'[i],lab));
+ return{fig:svgLine(I.map((_,i)=>String(y0+i)),I)+`<div class="figs">${figs.join('')}</div>`,question:`上の図は、ある県の観光客数を ${y0}年を100とした指数で表したものである。前年比増加率 $100\\times\\left(\\dfrac{\\text{当年}}{\\text{前年}}-1\\right)$(%)を表したグラフとして最も適切なものを、下の①〜⑤のうちから一つ選べ。`,
+  choices:['①','②','③','④','⑤'].map(c=>c+'のグラフ'),answer:ord.indexOf(0)+1,fixed:true,
+  explanation:`前年比増加率は ${g.map((v,i)=>`${lab[i]}年 ${fx(v,1)}%`).join('、')}。\n指数が前年より下がった年は負の値になる。基準年との差(指数−100)や、1年ずれたグラフと区別する。`};
+});
+
+// ===== 確率 =====
+def('p_total3','確率','全確率の公式とベイズの定理(3つの原因)',R=>{
+ const s=R.pick([[0.5,0.3,0.2],[0.4,0.35,0.25],[0.6,0.25,0.15]]),d=[R.ri(1,5)/100,R.ri(2,6)/100,R.ri(3,9)/100],pd=sum(s.map((v,i)=>v*d[i])),j=R.ri(0,2);
+ const tb=tbl(['工場','A','B','C'],[['生産の割合',...s.map(v=>fx(v,2))],['不良率',...d.map(v=>fx(v,2))]]);
+ if(R.r()<0.4)return{fig:tb,question:`ある製品は3つの工場で次の表のように生産されている。無作為に選んだ1個が不良品である確率はいくらか。${ONE}`,...mc(R,pd,[mean(d),sum(d),d[0]*s[0],Math.max(...d)],{d:4,min:0,max:1}),
+  explanation:`全確率の公式 $\\sum P(\\text{工場})P(\\text{不良}\\mid\\text{工場})=${s.map((v,i)=>`${v}\\times${d[i]}`).join('+')}=${fx(pd,4)}$。`};
+ const a=s[j]*d[j]/pd;
+ return{fig:tb,question:`ある製品は3つの工場で次の表のように生産されている。無作為に選んだ1個が不良品であったとき、それが工場${'ABC'[j]}の製品である確率はいくらか。${ONE}`,...mc(R,a,[s[j],d[j],s[j]*d[j],d[j]/sum(d)],{d:3,min:0,max:1}),
+  explanation:`$P(\\text{不良})=${fx(pd,4)}$。$P(${'ABC'[j]}\\mid\\text{不良})=\\dfrac{${s[j]}\\times${d[j]}}{${fx(pd,4)}}=${fx(a,3)}$。`};
+});
+def('p_condtab','確率','分割表から条件付き確率',R=>{
+ const a=R.ri(10,50),b=R.ri(10,50),c=R.ri(10,50),d=R.ri(10,50),N=a+b+c+d,ctx=R.pick([['運動部','文化部','自転車通学','徒歩通学'],['20代','30代','スマホ決済を使う','使わない']]);
+ return{fig:tbl(['',ctx[2],ctx[3],'計'],[[ctx[0],a,b,a+b],[ctx[1],c,d,c+d],['計',a+c,b+d,N]]),question:`次の表の ${N} 人から1人を無作為に選ぶ。選ばれた人が「${ctx[2]}」であったとき、その人が「${ctx[0]}」である条件付き確率はいくらか。${ONE}`,
+  ...mc(R,a/(a+c),[a/(a+b),a/N,(a+c)/N,(a+b)/N],{d:3,min:0,max:1}),
+  explanation:`条件「${ctx[2]}」の ${a+c} 人に限定して考える。$P=\\dfrac{${a}}{${a+c}}=${fx(a/(a+c),3)}$。逆の条件付き確率 $${a}/${a+b}$ と混同しないこと。`};
+});
+def('p_dice2','確率','2個のサイコロの確率',R=>{
+ const t=R.pick(['ge','eq','diff','prod']);let k=0,desc='';
+ const s=R.ri(4,11),dd=R.ri(1,4);
+ for(let i=1;i<=6;i++)for(let j=1;j<=6;j++){if(t==='ge'&&i+j>=s)k++;if(t==='eq'&&i+j===s)k++;if(t==='diff'&&Math.abs(i-j)>=dd)k++;if(t==='prod'&&i*j%2===0)k++}
+ desc=t==='ge'?`出た目の和が ${s} 以上になる`:t==='eq'?`出た目の和が ${s} になる`:t==='diff'?`出た目の差(大きい方−小さい方)が ${dd} 以上になる`:`出た目の積が偶数になる`;
+ const F=v=>`$${frac(Math.round(v*36),36)}$`;
+ return{question:`公平なサイコロを2回振る。${desc}確率はいくらか。${ONE}`,...mc(R,k/36,[(k-1)/36,(k+2)/36,(36-k)/36,(k+6)/36,(k-3)/36],{min:1/36,max:1,fmt:F}),
+  explanation:`36通りのうち条件を満たすのは ${k} 通り。$\\dfrac{${k}}{36}=${frac(k,36)}$。`};
+});
+def('p_comm','確率','組合せと確率(委員の選出)',R=>{
+ const m=R.ri(4,8),w=R.ri(3,6),k=R.ri(2,4),N=m+w;if(k>m)return null;
+ if(R.r()<0.5){const p=1-Cb(m,k)/Cb(N,k);return{question:`男性 ${m} 人、女性 ${w} 人の中から、くじで ${k} 人の委員を選ぶ。委員に女性が少なくとも1人含まれる確率はいくらか。${ONE}`,...mc(R,p,[Cb(w,1)*Cb(m,k-1)/Cb(N,k),1-(m/N)**k,w/N,Cb(m,k)/Cb(N,k)],{d:3,min:0,max:1}),
+  explanation:`余事象「全員男性」は $\\dfrac{{}_{${m}}\\mathrm C_{${k}}}{{}_{${N}}\\mathrm C_{${k}}}=\\dfrac{${Cb(m,k)}}{${Cb(N,k)}}$。よって $1-${fx(Cb(m,k)/Cb(N,k),4)}=${fx(p,3)}$。`}}
+ const j=R.ri(1,Math.min(k,w)),p=Cb(w,j)*Cb(m,k-j)/Cb(N,k);
+ return{question:`男性 ${m} 人、女性 ${w} 人の中から、くじで ${k} 人の委員を選ぶ。委員のうち女性がちょうど ${j} 人である確率はいくらか。${ONE}`,...mc(R,p,[Cb(k,j)*(w/N)**j*(m/N)**(k-j),Cb(w,j)/Cb(N,k),Cb(w,j)*Cb(m,k-j)/Cb(N,j)/10,1-p],{d:3,min:0,max:1}),
+  explanation:`超幾何分布。$\\dfrac{{}_{${w}}\\mathrm C_{${j}}\\times{}_{${m}}\\mathrm C_{${k-j}}}{{}_{${N}}\\mathrm C_{${k}}}=\\dfrac{${Cb(w,j)*Cb(m,k-j)}}{${Cb(N,k)}}=${fx(p,3)}$。元に戻す場合(二項分布)の値とは異なる。`};
+});
+def('p_geomk','確率','初めて成功するまでの回数',R=>{
+ const p=R.pick([0.1,0.2,0.25,0.3,0.4]),k=R.ri(2,5);
+ if(R.r()<0.5){const a=(1-p)**(k-1)*p;return{question:`1回の成功確率が ${p} の試行を、成功するまで独立に繰り返す。ちょうど ${k} 回目に初めて成功する確率はいくらか。${ONE}`,...mc(R,a,[(1-p)**k*p,p**(k-1)*(1-p),1-(1-p)**k,(1-p)**(k-1)],{d:4,min:0,max:1}),
+  explanation:`${k-1} 回続けて失敗し、${k} 回目に成功する。$(1-${p})^{${k-1}}\\times${p}=${fx(a,4)}$。`}}
+ const a=(1-p)**k;
+ return{question:`1回の成功確率が ${p} の試行を、成功するまで独立に繰り返す。成功するまでに ${k} 回より多くの試行が必要になる確率はいくらか。${ONE}`,...mc(R,a,[1-a,(1-p)**(k-1),(1-p)**k*p,p**k],{d:4,min:0,max:1}),
+  explanation:`最初の ${k} 回がすべて失敗する確率に等しい。$(1-${p})^{${k}}=${fx(a,4)}$。`};
+});
+
+// ===== 確率変数と確率分布 =====
+def('r_sumn','確率変数と確率分布','独立な確率変数の和の期待値・分散',R=>{
+ const n=R.pick([2,3,4,5,10]),t=R.pick(['dice','coin']);
+ if(t==='dice')return{question:`公平なサイコロを ${n} 回振るとき、出た目の合計の分散はいくらか。${ONE}`,...mc(R,35*n/12,[35/12,35*n*n/12,Math.sqrt(35*n/12),3.5*n],{d:2,min:0}),
+  explanation:`1回の目の分散は $\\dfrac{91}{6}-3.5^2=\\dfrac{35}{12}\\approx2.92$。独立なので合計の分散は $n$ 倍で $${n}\\times\\dfrac{35}{12}=${fx(35*n/12,2)}$。`};
+ const m=R.ri(2,5)*10;return{question:`表が出たら ${m} 円もらえ、裏なら何ももらえないコイン投げを、独立に ${n} 回行う。もらえる金額の合計の標準偏差はいくらか。${ONE}`,...mc(R,m/2*Math.sqrt(n),[m*m/4*n,m/2*n,m/2,m*Math.sqrt(n)],{d:2,min:0}),
+  explanation:`1回の金額の分散は $${m}^2\\times\\dfrac14=${m*m/4}$。合計の分散は $${n}\\times${m*m/4}=${m*m/4*n}$、標準偏差は $\\sqrt{${m*m/4*n}}=${fx(m/2*Math.sqrt(n),2)}$。`};
+});
+def('r_unif','確率変数と確率分布','連続一様分布',R=>{
+ const a=R.ri(0,5),b=a+R.pick([4,5,6,8,10,12]),v=(b-a)**2/12;
+ if(R.r()<0.5){const c=a+R.ri(1,b-a-2),d=c+R.ri(1,b-c-1);return{question:`確率変数 $X$ が区間 $[${a},${b}]$ の一様分布に従うとき、$P(${c}\\le X\\le${d})$ はいくらか。${ONE}`,...mc(R,(d-c)/(b-a),[(d-c)/b,d/(b-a),(d-c)/(b-a+1),c/(b-a)],{d:3,min:0,max:1}),
+  explanation:`確率密度は $\\dfrac1{${b-a}}$ で一定。$P=\\dfrac{${d}-${c}}{${b}-${a}}=${fx((d-c)/(b-a),3)}$。`}}
+ return{question:`確率変数 $X$ が区間 $[${a},${b}]$ の一様分布に従うとき、$X$ の分散はいくらか。${ONE}`,...mc(R,v,[(b-a)**2/4,(b-a)/12,(a+b)/2,(b*b-a*a)/12],{d:3,min:0}),
+  explanation:`一様分布 $U(a,b)$ の分散は $\\dfrac{(b-a)^2}{12}=\\dfrac{${(b-a)**2}}{12}=${fx(v,3)}$。平均は $\\dfrac{a+b}{2}=${(a+b)/2}$。`};
+});
+def('r_expo','確率変数と確率分布','指数分布と無記憶性',R=>{
+ const m=R.pick([2,4,5,10,20]),t=R.pick([1,2,3,5,10].filter(v=>v<=m*1.5)),s=R.pick([2,5,10]);
+ if(R.r()<0.5){const p=Math.exp(-t/m);return{question:`ある機械が故障するまでの時間 $X$(年)は、平均 ${m} 年の指数分布に従う。$P(X>${t})$ はいくらか。${ONE}`,...mc(R,p,[1-p,Math.exp(-t*m),t/m,Math.exp(-m/t)],{d:3,min:0,max:1}),
+  explanation:`平均 $${m}$ の指数分布は $P(X>x)=e^{-x/${m}}$。$e^{-${t}/${m}}=${fx(p,3)}$。`}}
+ const p=Math.exp(-t/m);
+ return{question:`ある電球が切れるまでの時間 $X$(百時間)は、平均 ${m} の指数分布に従う。すでに ${s} 経過して切れていないとき、さらに ${t} 以上もつ条件付き確率 $P(X>${s+t}\\mid X>${s})$ はいくらか。${ONE}`,...mc(R,p,[Math.exp(-(s+t)/m),1-p,Math.exp(-s/m),Math.exp(-(s+t)/m)/2],{d:3,min:0,max:1}),
+  explanation:`指数分布は無記憶性をもつ。$P(X>${s+t}\\mid X>${s})=\\dfrac{e^{-${s+t}/${m}}}{e^{-${s}/${m}}}=e^{-${t}/${m}}=${fx(p,3)}$。`};
+});
+def('r_poisapx','確率変数と確率分布','二項分布のポアソン近似',R=>{
+ const l=R.pick([1,2,3]),n=R.pick([200,500,1000]),p=l/n,k=R.ri(0,3),f=x=>{let s=1;for(let i=2;i<=x;i++)s*=i;return s},a=Math.exp(-l)*l**k/f(k);
+ return{question:`ある製品の不良率は ${p} である。無作為に ${n} 個を検査するとき、不良品がちょうど ${k} 個である確率を、ポアソン分布で近似するといくらか。${ONE}`,...mc(R,a,[Math.exp(-l)*l**k,Math.exp(-1)/f(k),l**k/f(k)*Math.exp(-l)*2,1-a],{d:3,min:0,max:1}),
+  explanation:`$\\lambda=np=${n}\\times${p}=${l}$。$P(X=${k})\\approx e^{-${l}}\\dfrac{${l}^{${k}}}{${k}!}=${fx(a,3)}$。`};
+});
+def('r_covtab','確率変数と確率分布','同時確率表から共分散',R=>{
+ let c;do{c=Array.from({length:5},()=>R.ri(1,5))}while(sum(c)>=19);const ps=[...c,20-sum(c)].map(v=>v/20),P=[[ps[0],ps[1],ps[2]],[ps[3],ps[4],ps[5]]];
+ const EX=P[1][0]+P[1][1]+P[1][2],EY=[0,1].reduce((s,x)=>s+P[x][1]+2*P[x][2],0),EXY=P[1][1]+2*P[1][2],cv=EXY-EX*EY;
+ return{fig:tbl(['$x\\backslash y$','$0$','$1$','$2$'],[0,1].map(x=>[`$${x}$`,...P[x].map(v=>fx(v,2))])),question:`確率変数 $X, Y$ の同時確率が次の表で与えられている。$\\mathrm{Cov}(X,Y)$ の値はいくらか。${ONE}`,
+  ...mc(R,cv,[EXY,EX*EY,-cv,EXY-EX-EY],{d:3}),
+  explanation:`$E[X]=${fx(EX,2)}$、$E[Y]=${fx(EY,2)}$、$E[XY]=${fx(EXY,2)}$。\n$\\mathrm{Cov}=E[XY]-E[X]E[Y]=${fx(EXY,2)}-${fx(EX*EY,4)}=${fx(cv,3)}$。`};
+});
+def('r_cheb2','確率変数と確率分布','チェビシェフの不等式(数値)',R=>{
+ const mu=R.ri(10,20)*5,s=R.pick([2,4,5,10]),k=R.pick([1.5,2,2.5,3,4]),c=k*s;
+ if(R.r()<0.5)return{question:`平均 ${mu}、標準偏差 ${s} の確率変数 $X$ について、分布の形はわからないとする。チェビシェフの不等式によると、$P(|X-${mu}|\\ge ${c})$ の上限はいくらか。${ONE}`,...mc(R,1/(k*k),[1/k,1-1/(k*k),s/c/2,2*Q(k)],{d:4,min:0,max:1}),
+  explanation:`$P(|X-\\mu|\\ge k\\sigma)\\le\\dfrac1{k^2}$。$k=${c}/${s}=${k}$ なので上限は $\\dfrac1{${k}^2}=${fx(1/(k*k),4)}$。正規分布の値 ${fx(2*Q(k),4)} は分布がわかっている場合。`};
+ return{question:`平均 ${mu}、標準偏差 ${s} の確率変数 $X$ について、分布の形はわからないとする。チェビシェフの不等式によると、$X$ が $${mu-c}$ より大きく $${mu+c}$ より小さい範囲に入る確率は少なくともいくらか。${ONE}`,...mc(R,1-1/(k*k),[1/(k*k),1-1/k,1-2*Q(k),1-1/(2*k*k)],{d:4,min:0,max:1}),
+  explanation:`$P(|X-\\mu|<k\\sigma)\\ge1-\\dfrac1{k^2}$、$k=${k}$ なので $1-${fx(1/(k*k),4)}=${fx(1-1/(k*k),4)}$。`};
+});
+def('r_pdf','確率変数と確率分布','確率密度関数の定数と確率',R=>{
+ const a=R.pick([1,2,3,4]),k=R.pick([1,2]),c=(k+1)/a**(k+1),b=a*R.ri(2,8)/10,P=(b/a)**(k+1);
+ const fx_=k===1?'cx':'cx^2',ct=frac(k+1,a**(k+1));
+ if(R.r()<0.5)return{question:`確率変数 $X$ の確率密度関数が $f(x)=${fx_}\\ (0\\le x\\le${a})$、それ以外で0であるとき、定数 $c$ の値はいくらか。${ONE}`,...mt(R,`$c=${ct}$`,[`$c=${frac(k,a**(k+1))}$`,`$c=${frac(1,a)}$`,`$c=${frac(k+1,a**k)}$`,`$c=${frac(1,a**(k+1))}$`].filter(s=>s!==`$c=${ct}$`)),
+  explanation:`全確率が1なので $\\int_0^{${a}}${fx_}\\,dx=c\\dfrac{${a}^{${k+1}}}{${k+1}}=1$、$c=${ct}$。`};
+ return{question:`確率変数 $X$ の確率密度関数が $f(x)=${ct}${k===1?'x':'x^2'}\\ (0\\le x\\le${a})$、それ以外で0であるとき、$P(X\\le${+fx(b,2)})$ はいくらか。${ONE}`,...mc(R,P,[b/a,(b/a)**k,1-P,c*b],{d:3,min:0,max:1}),
+  explanation:`$P(X\\le b)=\\int_0^b f(x)\\,dx=\\left(\\dfrac{b}{${a}}\\right)^{${k+1}}=${fx(P,3)}$。`};
+});
+
+// ===== 正規分布と標本分布 =====
+def('n_sum','正規分布と標本分布','正規分布の和・差の確率',R=>{
+ const [s1,s2,s]=R.pick([[3,4,5],[6,8,10],[5,12,13],[9,12,15]]),m1=R.ri(20,60),m2=R.ri(20,60),z=R.ri(50,250)/100;
+ if(R.r()<0.5){const c=m1+m2+z*s;return{question:`互いに独立な確率変数 $X\\sim N(${m1},${s1}^2)$、$Y\\sim N(${m2},${s2}^2)$ について、$P(X+Y\\ge${+fx(c,2)})$ はいくらか。付表を用いて、${ONE}`,...mc(R,Q(z),[Q(z*s/(s1+s2)),Q(z*s/(s*s)),1-Q(z),Q(z*s/Math.sqrt(s1+s2)/3)],{d:4,min:0,max:1}),
+  explanation:`$X+Y\\sim N(${m1+m2},\\,${s1}^2+${s2}^2)=N(${m1+m2},${s}^2)$。$z=\\dfrac{${+fx(c,2)}-${m1+m2}}{${s}}=${fx(z,2)}$、$P=${fx(Q(z),4)}$。標準偏差どうしを足して ${s1+s2} としないこと。`}}
+ const d=z*s,ma=m2+d;
+ return{question:`互いに独立な確率変数 $X\\sim N(${+fx(ma,2)},${s1}^2)$、$Y\\sim N(${m2},${s2}^2)$ について、$P(X>Y)$ はいくらか。付表を用いて、${ONE}`,...mc(R,1-Q(z),[Q(z),1-Q(d/(s1+s2)),0.5,1-Q(d/(s*s))],{d:4,min:0,max:1}),
+  explanation:`$X-Y\\sim N(${fx(d,2)},\\,${s}^2)$。$P(X-Y>0)=P\\left(Z>-\\dfrac{${fx(d,2)}}{${s}}\\right)=1-P(Z\\ge${fx(z,2)})=${fx(1-Q(z),4)}$。`};
+});
+def('n_dist','正規分布と標本分布','標本分布の名称と自由度',R=>{
+ const k=R.ri(3,9),m=R.ri(3,9),n2=R.ri(5,12);
+ const ans=[`$\\chi^2(${k})$`,`$t(${m})$`,`$F(${m},${n2})$`];
+ return{question:`$Z,Z_1,\\dots,Z_{${k}}$ は互いに独立に標準正規分布に従い、$U\\sim\\chi^2(${m})$、$V\\sim\\chi^2(${n2})$ は互いに独立で $Z$ とも独立とする。\n$Z_1^2+\\cdots+Z_{${k}}^2$ は(ア)に、$\\dfrac{Z}{\\sqrt{U/${m}}}$ は(イ)に、$\\dfrac{U/${m}}{V/${n2}}$ は(ウ)に従う。(ア)〜(ウ)の組合せとして、${ONE}`,
+  ...parts(R,ans,[[`$\\chi^2(${k-1})$`,ans[1],ans[2]],[ans[0],`$t(${m-1})$`,ans[2]],[ans[0],ans[1],`$F(${n2},${m})$`],[`$N(0,${k})$`,ans[1],ans[2]],[ans[0],`$\\chi^2(${m})$`,`$F(${n2},${m})$`]]),
+  explanation:`標準正規分布の2乗の和は自由度=個数の $\\chi^2$ 分布。$t$ 分布は $Z/\\sqrt{\\chi^2/\\nu}$ で自由度は分母の $\\chi^2$ の自由度。$F$ 分布の自由度は(分子, 分母)の順。`};
+});
+def('n_s2','正規分布と標本分布','標本分散の分布(χ²分布)',R=>{
+ const n=R.pick([6,8,10,11,13,16,21]),v=R.pick([4,9,10,16,25]),a=R.pick([0.05,0.025,0.01]),ch=cq(n-1,a),c=v*ch/(n-1);
+ return{question:`正規母集団 $N(\\mu,${v})$ から大きさ ${n} の標本を抽出し、不偏分散を $U^2$ とする。$P(U^2\\ge c)=${a}$ となる $c$ の値はいくらか。付表を用いて、${ONE}`,...mc(R,c,[v*cq(n,a)/n,v*ch/n,ch,v*cq(n-1,1-a)/(n-1)],{d:2,min:0}),
+  explanation:`$\\dfrac{(n-1)U^2}{\\sigma^2}\\sim\\chi^2(${n-1})$。$P\\left(\\chi^2\\ge${ch}\\right)=${a}$ なので $c=\\dfrac{${v}\\times${ch}}{${n-1}}=${fx(c,2)}$。`};
+});
+def('n_clt','正規分布と標本分布','中心極限定理による和の近似',R=>{
+ const t=R.pick(['dice','coin','pois']);let n,mu,v,what;
+ if(t==='dice'){n=R.pick([100,300]);mu=3.5;v=35/12;what=`公平なサイコロを ${n} 回振ったときの目の合計`}else if(t==='coin'){n=R.pick([100,400,900]);mu=0.5;v=0.25;what=`公平なコインを ${n} 回投げたときの表の回数`}else{n=R.pick([50,100]);mu=2;v=2;what=`平均2のポアソン分布に従う独立な ${n} 個の確率変数の合計`}
+ const M=n*mu,S=Math.sqrt(n*v),z0=R.ri(80,230)/100,s=Math.round(M+z0*S),z=Math.round((s-M)/S*100)/100;
+ return{question:`${what}を $T$ とする。中心極限定理による正規近似を用いると、$P(T\\ge ${s})$ の近似値はいくらか(連続修正は行わない)。付表を用いて、${ONE}`,...mc(R,Q(z),[Q((s-M)/(S*S)*S/Math.sqrt(n)),1-Q(z),Q(z/2),Q((s-M)/Math.sqrt(v))/1.5],{d:4,min:0,max:1}),
+  explanation:`$E[T]=${n}\\times${fx(mu,2)}=${fx(M,1)}$、$V[T]=${n}\\times${fx(v,4)}=${fx(n*v,2)}$、標準偏差 $${fx(S,3)}$。\n$z=\\dfrac{${s}-${fx(M,1)}}{${fx(S,3)}}\\approx${fx(z,2)}$、$P(Z\\ge${fx(z,2)})=${fx(Q(z),4)}$。`};
+});
+def('n_tq','正規分布と標本分布','t分布のパーセント点(付表)',R=>{
+ const df=R.pick([5,8,10,12,15,20,24,30]),two=R.r()<0.5,a=two?R.pick([0.05,0.1,0.01]):R.pick([0.05,0.025,0.01]),c=tq(df,two?a/2:a);
+ return{question:`$T$ が自由度 ${df} の $t$ 分布に従うとき、$P(${two?'|T|':'T'}\\ge c)=${a}$ を満たす $c$ の値はいくらか。付表を用いて、${ONE}`,...mc(R,c,[tq(df,two?a:a/2),TB.zq[String(two?a/2:a)],tq(df-1,two?a/2:a),tq(df,two?a/2:a)*-1],{d:3}),
+  explanation:`${two?`両側なので上側 ${a/2} 点を読む。`:'上側確率をそのまま読む。'}付表より $t_{${two?a/2:a}}(${df})=${c}$。`};
+});
+
+// ===== 統計的推定 =====
+def('e_civar','統計的推定','母分散の信頼区間(χ²分布)',R=>{
+ const n=R.pick([8,10,11,13,16,21,25]),u=R.pick([4,6.5,9,12.5,16,20]),df=n-1,lo=df*u/cq(df,0.025),hi=df*u/cq(df,0.975),up=R.r()<0.5;
+ return{question:`正規母集団から大きさ ${n} の標本を抽出したところ、不偏分散は ${u} であった。母分散 $\\sigma^2$ の 95% 信頼区間の${up?'上限':'下限'}はいくらか。付表を用いて、${ONE}`,
+  ...mc(R,up?hi:lo,[up?lo:hi,df*u/cq(df,up?0.95:0.05),n*u/cq(n,up?0.975:0.025),u*cq(df,up?0.025:0.975)/df],{d:2,min:0}),
+  explanation:`$\\dfrac{(n-1)U^2}{\\sigma^2}\\sim\\chi^2(${df})$。$\\chi^2_{0.025}(${df})=${cq(df,0.025)}$、$\\chi^2_{0.975}(${df})=${cq(df,0.975)}$。\n下限 $=\\dfrac{${df}\\times${u}}{${cq(df,0.025)}}=${fx(lo,2)}$、上限 $=\\dfrac{${df}\\times${u}}{${cq(df,0.975)}}=${fx(hi,2)}$。大きい方の点で割ると下限になる。`};
+});
+def('e_cidiff','統計的推定','母平均の差の信頼区間',R=>{
+ const n1=R.pick([16,25,36,50]),n2=R.pick([16,25,36,50]),s1=R.pick([4,5,6,8,10]),s2=R.pick([4,5,6,8,10]),d=R.ri(10,80)/10,se=Math.sqrt(s1*s1/n1+s2*s2/n2),h=1.96*se;
+ const wide=R.shuf([2.576*se,3.29*se,1.96*se*Math.SQRT2,1.96*Math.sqrt(s1*s1+s2*s2)/Math.sqrt(Math.min(n1,n2))*1.6]),nar=R.shuf([1.645*se,1.96*se/Math.SQRT2,1.28*se,se]),kw=R.ri(0,4);
+ const hs=[h,...wide.slice(0,kw),...nar.slice(0,4-kw)].sort((a,b)=>a-b),C=hs.map(x=>`$[${fx(d-x,2)},\\ ${fx(d+x,2)}]$`);if(new Set(C).size<5)return null;
+ return{question:`2つの正規母集団の母標準偏差はそれぞれ ${s1}、${s2} であることがわかっている。大きさ ${n1}、${n2} の標本の標本平均の差 $\\bar x_1-\\bar x_2$ は ${d} であった。母平均の差 $\\mu_1-\\mu_2$ の 95% 信頼区間として、${ONE}`,choices:C,answer:hs.indexOf(h)+1,fixed:true,
+  explanation:`標準誤差 $=\\sqrt{\\dfrac{${s1}^2}{${n1}}+\\dfrac{${s2}^2}{${n2}}}=${fx(se,4)}$。$${d}\\pm1.96\\times${fx(se,4)}=${d}\\pm${fx(h,2)}$。標準誤差どうしを足すのは誤り(分散を足す)。`};
+});
+def('e_cidp','統計的推定','母比率の差の信頼区間',R=>{
+ const n1=R.pick([200,300,400,500]),n2=R.pick([200,300,400,500]),k1=R.ri(Math.round(n1*0.3),Math.round(n1*0.7)),k2=R.ri(Math.round(n2*0.3),Math.round(n2*0.7)),p1=k1/n1,p2=k2/n2,se=Math.sqrt(p1*(1-p1)/n1+p2*(1-p2)/n2);
+ return{question:`地域Aで ${n1} 人中 ${k1} 人、地域Bで ${n2} 人中 ${k2} 人がある政策に賛成した。母比率の差 $p_A-p_B$ の近似 95% 信頼区間の幅の半分(誤差)はいくらか。${ONE}`,...mc(R,1.96*se,[1.96*(Math.sqrt(p1*(1-p1)/n1)+Math.sqrt(p2*(1-p2)/n2)),se,1.645*se,1.96*Math.sqrt(0.25/n1+0.25/n2)*1.3],{d:4,min:0}),
+  explanation:`$\\hat p_A=${fx(p1,3)}$、$\\hat p_B=${fx(p2,3)}$。標準誤差 $=\\sqrt{\\dfrac{\\hat p_A(1-\\hat p_A)}{${n1}}+\\dfrac{\\hat p_B(1-\\hat p_B)}{${n2}}}=${fx(se,4)}$。\n誤差 $=1.96\\times${fx(se,4)}=${fx(1.96*se,4)}$。`};
+});
+def('e_mle','統計的推定','最尤推定値',R=>{
+ const t=R.pick(['pois','exp','bern']),n=R.pick([5,6,8]);
+ if(t==='pois'){const x=Array.from({length:n},()=>R.ri(0,6)),m=mean(x);if(!m)return null;return{question:`ある交差点の1日あたりの事故件数がポアソン分布 $Po(\\lambda)$ に従うとする。${n} 日間の件数が $${x.join(',\\ ')}$ であったとき、$\\lambda$ の最尤推定値はいくらか。${ONE}`,...mc(R,m,[med(x),1/m,sum(x),usd(x)**2*1.3],{d:3,min:0}),
+  explanation:`対数尤度 $\\sum x_i\\log\\lambda-n\\lambda+\\text{定数}$ を微分して0とおくと $\\hat\\lambda=\\bar x=${fx(m,3)}$。`}}
+ if(t==='exp'){const x=Array.from({length:n},()=>R.ri(1,20)),m=mean(x);return{question:`ある窓口の客の到着間隔が、確率密度関数 $f(x)=\\lambda e^{-\\lambda x}\\ (x>0)$ の指数分布に従うとする。${n} 回の観測値(分)が $${x.join(',\\ ')}$ であったとき、$\\lambda$ の最尤推定値はいくらか。${ONE}`,...mc(R,1/m,[m,1/med(x),n/(sum(x)+n),1/(m*m)],{d:4,min:0}),
+  explanation:`対数尤度 $n\\log\\lambda-\\lambda\\sum x_i$ を微分して0とおくと $\\hat\\lambda=\\dfrac{n}{\\sum x_i}=\\dfrac1{\\bar x}=\\dfrac1{${fx(m,3)}}=${fx(1/m,4)}$。平均 $1/\\lambda$ の推定値 ${fx(m,3)} と混同しないこと。`}}
+ const N=R.pick([20,40,50]),k=R.ri(3,N-3),p=k/N;return{question:`ある試行を独立に ${N} 回行ったところ、${k} 回成功した。成功確率 $p$ の最尤推定値はいくらか。${ONE}`,...mc(R,p,[1-p,k/(N+1),(k+1)/(N+2),Math.sqrt(p)],{d:3,min:0,max:1}),
+  explanation:`尤度 $p^{${k}}(1-p)^{${N-k}}$ の対数を微分して0とおくと $\\hat p=${k}/${N}=${fx(p,3)}$。`};
+});
+def('e_mse','統計的推定','平均二乗誤差による推定量の比較',R=>{
+ const v1=R.ri(4,20)/2,b=R.ri(1,4)/2,v2=R.ri(1,12)/2,m2=v2+b*b,s=m2<v1?'θ̂₂':m2>v1?'θ̂₁':'';if(!s)return null;
+ const ans=[fx(m2,2),s],W2=[[fx(v2,2),s],[fx(v2+b,2),s],[fx(m2,2),s==='θ̂₁'?'θ̂₂':'θ̂₁'],[fx(v2-b*b,2),'θ̂₁'],[fx(v2,2),s==='θ̂₁'?'θ̂₂':'θ̂₁']];
+ return{question:`母数 $\\theta$ の推定量として、不偏で分散 ${v1} の $\\hat\\theta_1$ と、バイアスが ${b}、分散が ${v2} の $\\hat\\theta_2$ がある。$\\hat\\theta_2$ の平均二乗誤差は(ア)であり、平均二乗誤差が小さいのは(イ)である。(ア)と(イ)の組合せとして、${ONE}`,...parts(R,ans,W2),
+  explanation:`$MSE=V[\\hat\\theta]+(\\text{バイアス})^2$。$\\hat\\theta_2$ は $${v2}+${b}^2=${fx(m2,2)}$、$\\hat\\theta_1$ は不偏なので分散 ${v1}。よって ${s} の方が小さい。不偏推定量が常に良いとは限らない。`};
+});
+
+// ===== 仮説検定 =====
+def('h_t1','仮説検定','1標本t検定(統計量と結論)',R=>{
+ const n=R.pick([9,16,25]),s=R.pick([3,4,5,6,8,10]),mu=R.ri(10,30)*5,t=R.pick([1.5,1.8,2.1,2.4,2.7,3,3.3])*R.pick([1,-1]),xb=+fx(mu+t*s/Math.sqrt(n),2),tt=(xb-mu)/(s/Math.sqrt(n)),al=R.pick([0.05,0.01]),cr=tq(n-1,al/2),rej=Math.abs(tt)>cr;
+ const lab=(v,r)=>`$t=${fx(v,2)}$ で、${dec(r)}`;const tw=(xb-mu)/(s/n);
+ return{question:`正規母集団について $H_0:\\mu=${mu}$、$H_1:\\mu\\ne${mu}$ を有意水準 ${al*100}% で検定する。大きさ ${n} の標本の標本平均は ${xb}、不偏分散の正の平方根は ${s} であった(母分散は未知)。検定統計量の値と結論の組合せとして、付表を用いて、${ONE}`,
+  ...mt(R,lab(tt,rej),[lab(tt,!rej),lab(tw,Math.abs(tw)>cr),lab((xb-mu)/s,false),lab(tt*Math.sqrt(n/(n-1)),!rej)]),
+  explanation:`$t=\\dfrac{${xb}-${mu}}{${s}/\\sqrt{${n}}}=${fx(tt,2)}$。自由度 ${n-1} の両側 ${al*100}% 点は $t_{${al/2}}(${n-1})=${cr}$。$|t|${rej?'>':'\\le'}${cr}$ なので${dec(rej)}。`};
+});
+def('h_t2','仮説検定','2標本t検定(等分散を仮定)',R=>{
+ const n1=R.ri(6,12),n2=R.ri(6,12),u1=R.ri(4,20),u2=R.ri(4,20),d=R.ri(10,60)/10,sp=((n1-1)*u1+(n2-1)*u2)/(n1+n2-2),t=d/Math.sqrt(sp*(1/n1+1/n2));
+ return{question:`2つの正規母集団(母分散は等しく未知)から大きさ ${n1}、${n2} の標本を抽出した。標本平均の差は ${d}、不偏分散はそれぞれ ${u1}、${u2} であった。$H_0:\\mu_1=\\mu_2$ の検定に用いる $t$ 統計量の値はいくらか。${ONE}`,
+  ...mc(R,t,[d/Math.sqrt(u1/n1+u2/n2)*1.08,d/Math.sqrt(sp),d/Math.sqrt((u1+u2)/2*(1/n1+1/n2))*0.9,d/Math.sqrt(sp*(1/n1+1/n2))*Math.sqrt(2)],{d:3,min:0}),
+  explanation:`併合分散 $u_p^2=\\dfrac{${n1-1}\\times${u1}+${n2-1}\\times${u2}}{${n1+n2-2}}=${fx(sp,3)}$。\n$t=\\dfrac{${d}}{\\sqrt{${fx(sp,3)}\\left(\\frac1{${n1}}+\\frac1{${n2}}\\right)}}=${fx(t,3)}$(自由度 ${n1+n2-2})。`};
+});
+def('h_paired','仮説検定','対応のあるt検定',R=>{
+ const n=R.pick([5,6,8]),b=Array.from({length:n},()=>R.ri(120,160)),dd=Array.from({length:n},()=>R.ri(-2,9)),a=b.map((v,i)=>v-dd[i]),dm=mean(dd),sd=usd(dd);if(sd===0)return null;
+ const t=dm/(sd/Math.sqrt(n)),sp=(usd(b)**2+usd(a)**2)/2,t2=dm/Math.sqrt(sp*2/n);
+ return{fig:tbl(['被験者',...b.map((_,i)=>i+1)],[['投薬前',...b],['投薬後',...a],['差(前−後)',...dd]]),question:`${n} 人の被験者について、ある薬の投薬前後の血圧を測定した。差(前−後)の母平均が0であるという帰無仮説の、対応のある $t$ 検定の検定統計量の値はいくらか。${ONE}`,
+  ...mc(R,t,[t2,dm/sd,dm/(sd/n),t*Math.sqrt((n-1)/n)],{d:3}),
+  explanation:`差の平均 $\\bar d=${fx(dm,3)}$、差の不偏分散の正の平方根 $s_d=${fx(sd,3)}$。\n$t=\\dfrac{\\bar d}{s_d/\\sqrt{${n}}}=${fx(t,3)}$(自由度 ${n-1})。独立な2標本として計算した ${fx(t2,3)} は誤り。`};
+});
+def('h_var1','仮説検定','母分散の検定(χ²検定)',R=>{
+ const n=R.pick([10,11,13,16,21]),s0=R.pick([4,9,16,25]),u=+fx(s0*R.ri(80,220)/100,1),x2=(n-1)*u/s0,cr=cq(n-1,0.05),rej=x2>cr;
+ const lab=(v,r)=>`$\\chi^2=${fx(v,2)}$ で、${dec(r)}`;
+ return{question:`ある製品の重さのばらつきについて、$H_0:\\sigma^2=${s0}$、$H_1:\\sigma^2>${s0}$ を有意水準5%で検定する。大きさ ${n} の標本の不偏分散は ${u} であった(母集団は正規分布)。検定統計量の値と結論の組合せとして、付表を用いて、${ONE}`,
+  ...mt(R,lab(x2,rej),[lab(x2,!rej),lab(n*u/s0,n*u/s0>cq(n,0.05)),lab(u/s0,false),lab((n-1)*s0/u,!rej)]),
+  explanation:`$\\chi^2=\\dfrac{(n-1)U^2}{\\sigma_0^2}=\\dfrac{${n-1}\\times${u}}{${s0}}=${fx(x2,2)}$。自由度 ${n-1} の上側5%点は ${cr}。${rej?'超えるので棄却される':'超えないので棄却されない'}。`};
+});
+def('h_F','仮説検定','等分散のF検定',R=>{
+ const n1=R.pick([6,8,10,11,13,16]),n2=R.pick([6,8,10,11,13,16]),u1=R.ri(10,60),u2=R.ri(5,30);if(u1<=u2)return null;
+ const F=u1/u2,cr=fq(0.025,n1-1,n2-1);if(!Number.isFinite(cr))return null;const rej=F>cr,lab=(v,c,r)=>`$F=${fx(v,2)}$、棄却限界値 ${c} で、${dec(r)}`;
+ const cw=fq(0.05,n1-1,n2-1),cs=fq(0.025,n2-1,n1-1);
+ return{question:`2つの正規母集団から大きさ ${n1}、${n2} の標本を抽出し、不偏分散はそれぞれ ${u1}、${u2} であった。$H_0:\\sigma_1^2=\\sigma_2^2$、$H_1:\\sigma_1^2\\ne\\sigma_2^2$ を有意水準5%で検定する($F=U_1^2/U_2^2$ を用い、上側2.5%点と比べる)。組合せとして、付表を用いて、${ONE}`,
+  ...mt(R,lab(F,cr,rej),[lab(F,cr,!rej),lab(F,cw,F>cw),lab(F,cs,F>cs),lab(u2/u1,cr,false)].filter((s,i,a)=>a.indexOf(s)===i&&s!==lab(F,cr,rej))),
+  explanation:`$F=${u1}/${u2}=${fx(F,2)}$ は自由度 $(${n1-1},${n2-1})$ の $F$ 分布に従う。両側5%なので上側2.5%点 ${cr} と比べる。${rej?'超えるので棄却される':'超えないので棄却されない'}。自由度の順序や5%点との取り違えに注意。`};
+});
+def('h_power','仮説検定','検定の検出力',R=>{
+ const s=R.pick([5,10,12,15]),n=R.pick([16,25,36,64,100]),d=R.pick([0.5,0.75,1,1.25,1.5,2,2.5,3]),mu0=R.ri(10,30)*5,mu1=mu0+d*s/Math.sqrt(n),z=1.96-d,pw=Q(z);
+ if(Math.abs(mu1*100-Math.round(mu1*100))>1e-6)return null;
+ return{question:`母標準偏差 ${s} の正規母集団について、$H_0:\\mu=${mu0}$、$H_1:\\mu>${mu0}$ を、大きさ ${n} の標本で有意水準2.5%(棄却域 $z>1.96$)で検定する。真の母平均が ${+fx(mu1,2)} のとき、この検定の検出力はいくらか。付表を用いて、${ONE}`,
+  ...mc(R,pw,[1-pw,Q(1.96+d),Q(1.96-d/2),0.025],{d:4,min:0,max:1}),
+  explanation:`棄却域は $\\bar X>${mu0}+1.96\\times\\dfrac{${s}}{${Math.sqrt(n)}}$。真の平均の下で標準化すると $Z>1.96-\\dfrac{${+fx(mu1,2)}-${mu0}}{${s}/${Math.sqrt(n)}}=${fx(z,2)}$。\n検出力 $=P(Z>${fx(z,2)})=${fx(pw,4)}$。第2種の過誤の確率は $${fx(1-pw,4)}$。`};
+});
+def('h_diffp','仮説検定','母比率の差の検定',R=>{
+ const n1=R.pick([100,200,300]),n2=R.pick([100,200,300]),k1=R.ri(Math.round(n1*0.3),Math.round(n1*0.7)),k2=R.ri(Math.round(n2*0.3),Math.round(n2*0.7)),p1=k1/n1,p2=k2/n2,p=(k1+k2)/(n1+n2),z=(p1-p2)/Math.sqrt(p*(1-p)*(1/n1+1/n2));
+ return{question:`新しい広告を見た ${n1} 人中 ${k1} 人、従来の広告を見た ${n2} 人中 ${k2} 人が商品を購入した。購入率に差がないという帰無仮説の検定で、併合した比率を用いた検定統計量 $z$ の値はいくらか。${ONE}`,
+  ...mc(R,z,[(p1-p2)/Math.sqrt(p1*(1-p1)/n1+p2*(1-p2)/n2)*1.05,(p1-p2)/Math.sqrt(p*(1-p)),(p1-p2)/Math.sqrt(p*(1-p)/(n1+n2)),-z],{d:3}),
+  explanation:`併合比率 $\\hat p=\\dfrac{${k1}+${k2}}{${n1}+${n2}}=${fx(p,4)}$。\n$z=\\dfrac{${fx(p1,4)}-${fx(p2,4)}}{\\sqrt{\\hat p(1-\\hat p)\\left(\\frac1{${n1}}+\\frac1{${n2}}\\right)}}=${fx(z,3)}$。`};
+});
+def('h_alpha','仮説検定','二項検定の有意水準と検出力',R=>{
+ const n=10,c=R.pick([8,9]),p1=R.pick([0.7,0.8]),P=(k,p)=>Cb(n,k)*p**k*(1-p)**(n-k),al=sum([...Array(n-c+1).keys()].map(i=>P(c+i,0.5))),pw=sum([...Array(n-c+1).keys()].map(i=>P(c+i,p1))),f=v=>fx(v,3);
+ return{question:`コインを ${n} 回投げて表の回数を $X$ とし、$H_0:p=0.5$、$H_1:p>0.5$ について「$X\\ge${c}$ なら $H_0$ を棄却する」検定を考える。この検定の第1種の過誤の確率は(ア)であり、真の $p$ が ${p1} のときの検出力は(イ)である。(ア)と(イ)の組合せとして、${ONE}`,
+  ...parts(R,[f(al),f(pw)],[[f(P(c,0.5)),f(pw)],[f(al),f(1-pw)],[f(al),f(P(c,p1))],[f(1-al),f(pw)],[f(P(c,0.5)),f(P(c,p1))]]),
+  explanation:`(ア) $P(X\\ge${c}\\mid p=0.5)=${f(al)}$。(イ) $P(X\\ge${c}\\mid p=${p1})=${f(pw)}$。境界の値 $X=${c}$ だけでなく、それ以上をすべて足す。`};
+});
+
+// ===== 回帰分析と分散分析 =====
+def('g_resid','回帰分析と分散分析','回帰直線の残差',R=>{
+ const xs=[1,2,3,4,5].map(v=>v*R.pick([1,2])),b0=R.ri(2,10),b1=R.ri(5,30)/10,ys=xs.map(x=>+fx(b0+b1*x+R.ri(-20,20)/10,1));
+ const mx=mean(xs),my=mean(ys),b=sum(xs.map((x,i)=>(x-mx)*(ys[i]-my)))/sum(xs.map(x=>(x-mx)**2)),a=my-b*mx,ar=+fx(a,2),br=+fx(b,2),i=R.ri(0,4),e=ys[i]-(ar+br*xs[i]);
+ return{fig:tbl(['$x$',...xs],[['$y$',...ys]]),question:`次のデータに最小二乗法で回帰直線を当てはめたところ、$\\hat y=${ar}+${br}x$ となった。$x=${xs[i]}$ のデータの残差(観測値−予測値)はいくらか。${ONE}`,
+  ...mc(R,e,[-e,ar+br*xs[i],ys[i]-my,e*e],{d:2}),
+  explanation:`予測値 $=${ar}+${br}\\times${xs[i]}=${fx(ar+br*xs[i],2)}$。残差 $=${ys[i]}-${fx(ar+br*xs[i],2)}=${fx(e,2)}$。`};
+});
+def('g_adjr2','回帰分析と分散分析','自由度調整済み決定係数',R=>{
+ const n=R.pick([20,30,40,50]),p=R.ri(2,6),r2=R.ri(40,90)/100,a=1-(1-r2)*(n-1)/(n-p-1);
+ return{question:`データ数 ${n}、説明変数 ${p} 個(定数項あり)の重回帰分析で、決定係数は ${r2} であった。自由度調整済み決定係数はいくらか。${ONE}`,...mc(R,a,[1-(1-r2)*n/(n-p),r2*(n-1)/(n-p-1),1-(1-r2)*(n-p-1)/(n-1),r2-p/n],{d:4,max:1}),
+  explanation:`$\\bar R^2=1-(1-R^2)\\dfrac{n-1}{n-p-1}=1-${fx(1-r2,2)}\\times\\dfrac{${n-1}}{${n-p-1}}=${fx(a,4)}$。説明変数が増えると罰則がかかる。`};
+});
+def('g_dummy','回帰分析と分散分析','ダミー変数を含む回帰式の予測',R=>{
+ const a=R.ri(10,50),b=R.ri(5,30)/10,c=R.pick([-1,1])*R.ri(20,80)/10,x=R.ri(5,20),D=R.pick([0,1]),y=a+b*x+c*D,ctx=R.pick([['勤続年数','管理職(管理職=1)','年収(十万円)'],['広告費','駅前店舗(駅前=1)','売上(万円)']]);
+ return{question:`${ctx[2]} $y$ を、${ctx[0]} $x$ とダミー変数 $D$(${ctx[1]}、それ以外=0)で回帰したところ、$\\hat y=${a}+${b}x${c<0?'':'+'}${c}D$ となった。$x=${x}$、$D=${D}$ のときの予測値はいくらか。${ONE}`,
+  ...mc(R,y,[a+b*x+(D?0:c),a+b*x+c,a+(b+c)*x*0.5+a*0.1,b*x+c*D],{d:2}),
+  explanation:`$\\hat y=${a}+${b}\\times${x}${c<0?'':'+'}${c}\\times${D}=${fx(y,2)}$。$D$ の係数 ${c} は、他の条件が同じときの2つのグループの差を表す。`};
+});
+def('g_aovsum','回帰分析と分散分析','要約統計量から一元配置分散分析',R=>{
+ const k=3,n=R.pick([5,6,8,10]),ms=(()=>{const b=R.ri(40,60),d=R.ri(2,8);return R.shuf([b,b+d,b+d+R.ri(0,8)])})(),us=[R.ri(10,40),R.ri(10,40),R.ri(10,40)],g=mean(ms),ssb=n*sum(ms.map(m=>(m-g)**2)),ssw=(n-1)*sum(us),F=(ssb/(k-1))/(ssw/(k*n-k));if(ssb===0)return null;
+ return{fig:tbl(['群','A','B','C'],[['データ数',n,n,n],['平均',...ms],['不偏分散',...us]]),question:`3つの群の要約統計量が次の表のとおりである。一元配置分散分析の F 統計量の値はいくらか。${ONE}`,
+  ...mc(R,F,[ssb/ssw,(ssb/(k-1))/(sum(us)/k)/n,(ssb/k)/(ssw/(k*n-1)),F*n/(n-1)],{d:3,min:0}),
+  explanation:`全体平均 $${fx(g,3)}$。水準間平方和 $=${n}\\sum(\\bar y_j-\\bar y)^2=${fx(ssb,2)}$(自由度2)。\n残差平方和 $=(n-1)\\sum u_j^2=${ssw}$(自由度 ${k*n-k})。$F=\\dfrac{${fx(ssb,2)}/2}{${ssw}/${k*n-k}}=${fx(F,3)}$。`};
+});
+def('g_elastic','回帰分析と分散分析','対数をとった回帰式の解釈',R=>{
+ const b=R.pick([0.3,0.5,0.8,1.2,-0.4,-0.6]),x=R.pick([2,3,4]);
+ if(R.r()<0.5){const C=[`約 ${Math.abs(b)}% ${b>0?'増加':'減少'}する`,`約 ${Math.abs(b)} ${b>0?'増加':'減少'}する`,`約 ${Math.abs(b*100)}% ${b>0?'増加':'減少'}する`,`約 ${Math.abs(b)}% ${b>0?'減少':'増加'}する`,`変化しない`];
+  return{question:`$\\log y=a+${b}\\log x$(自然対数)という回帰式が得られた。他の条件が同じとき、$x$ が1%増加すると $y$ はどう変化すると考えられるか。${ONE}`,...mt(R,C[0],C.slice(1)),
+   explanation:`両辺が対数なので、係数 ${b} は弾力性を表す。$x$ が1%増えると $y$ は約 ${Math.abs(b)}% ${b>0?'増加':'減少'}する。`}}
+ const r=x**b;return{question:`$\\log y=a+${b}\\log x$(自然対数)という回帰式が得られた。他の条件が同じとき、$x$ が ${x} 倍になると $y$ の予測値は何倍になるか。${ONE}`,...mc(R,r,[x*b,1+b*(x-1)*0.8,Math.exp(b*x),b**x],{d:3,min:0}),
+  explanation:`$\\log y$ は $${b}\\log ${x}$ だけ変化するので、$y$ は $e^{${b}\\log${x}}=${x}^{${b}}=${fx(r,3)}$ 倍になる。`};
+});
+
 // ---------- 公開API ----------
 function generate(id,seed){
  const g=G.find(x=>x.id===id);if(!g)return null;
