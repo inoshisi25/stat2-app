@@ -1,5 +1,5 @@
 // オフライン用のService Worker。ファイルを更新したら VERSION を変える
-const VERSION='stat2-v2';
+const VERSION='stat2-v3';
 const FILES=[
   './','index.html','manifest.webmanifest','css/style.css',
   'js/app.js','js/gen.js','js/formulas.js','data/questions.js','data/tables.js',
