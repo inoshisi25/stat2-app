@@ -17,7 +17,7 @@ const cq=(df,a)=>{const i=TB.chi2.df.indexOf(df),j=TB.chi2.alpha.indexOf(a);retu
 // t分布の両側P値(出力表の表示用。シンプソン積分)
 function lgam(x){const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];let y=x,t=x+5.5;t-=(x+0.5)*Math.log(t);let s=1.000000000190015;for(const k of c)s+=k/++y;return -t+Math.log(2.5066282746310005*s/x)}
 function tp2(t,v){t=Math.abs(t);const k=Math.exp(lgam((v+1)/2)-lgam(v/2))/Math.sqrt(v*Math.PI),f=x=>k*Math.pow(1+x*x/v,-(v+1)/2),n=400,h=t/n;let s=f(0)+f(t);for(let i=1;i<n;i++)s+=f(i*h)*(i%2?4:2);return Math.max(0,1-2*s*h/3)}
-const pfmt=p=>p<0.0001?'< 0.0001':fx(p,4);
+const pfmt=p=>p<0.0001?'&lt; 0.0001':fx(p,4);
 
 // ---------- 選択肢づくり ----------
 // 数値の5択。誤答(典型的な間違い)を優先し、足りなければ近い値で補う。値の小さい順に並べ、正解の位置は偏らないようにする
@@ -642,6 +642,72 @@ Object.entries(STMT).forEach(([f,pool],i)=>def('s_'+i,f,'記述の正誤(組合�
  return{question:`次の記述Ⅰ〜Ⅲは、${f}に関するものである。\nⅠ. ${s[0][0]}\nⅡ. ${s[1][0]}\nⅢ. ${s[2][0]}\n${CMBQ}`,...combo(R,s.map(x=>x[1])),
   explanation:s.map((x,j)=>`${['Ⅰ','Ⅱ','Ⅲ'][j]}は${TF(x[1])}。`).join('\n')+'\n記述が誤りの場合は、公式・用語まとめで該当する項目を確認しよう。'};
 }));
+
+// ----- 過去問(2021年6月 問20〜問22)の形式 -----
+// 問20型: 多重比較とボンフェローニ法
+def('h_bonf','仮説検定','多重比較とボンフェローニ法',R=>{
+ const v=R.pick([1,4]),sd=Math.sqrt(v),k=R.pick([3,4]),m=k*(k-1)/2;
+ const stem=`${k}つのグループ $A_1,\\dots,A_{${k}}$ から大きさ1の標本 $X_j$ をそれぞれ抽出する。$X_j$ は互いに独立に平均 $\\mu_j$、分散 ${v} の正規分布に従う。異なる2つのグループの標本 $X_j, X_k$ に対して $|X_j-X_k|>z$ であれば帰無仮説「$\\mu_j=\\mu_k$」を棄却する検定を考え、この検定の第1種の過誤の確率を $\\alpha_{jk}(z)$ とする。\n`;
+ const sq=v===1?'\\sqrt2':'2\\sqrt2';
+ if(R.r()<0.4){const c=R.pick([[1.645,'0.100'],[1.96,'0.050'],[2.576,'0.010']]),C=['0.010','0.025','0.050','0.100','0.200'];
+  return{question:`${stem}$\\alpha_{12}(${c[0]}\\times${sq})$ の値はいくらか。${ONE}`,choices:C,answer:C.indexOf(c[1])+1,fixed:true,
+   explanation:`$H_0$ の下で $X_1-X_2\\sim N(0,\\,2\\times${v})$、標準偏差は $${sq}$。\nよって $\\alpha_{12}=P(|Z|>${c[0]})=${c[1]}$(両側)。片側の値と取り違えないこと。`}}
+ const A=R.pick([0.05,0.1]),per=A/m,z0=zinv(per/2),z=z0*Math.SQRT2*sd,pct=frac(Math.round(A*100),m);
+ const pairs=[];for(let i=1;i<=k;i++)for(let j=i+1;j<=k;j++)pairs.push(`|X_${i}-X_${j}|>z`);
+ return{question:`${stem}$${pairs.join('\\ \\text{または}\\ ')}$ であれば帰無仮説「すべての $\\mu_j$ が等しい」を棄却する検定を考える。ボンフェローニの不等式より、この検定の第1種の過誤の確率は各 $\\alpha_{jk}(z)$ の和以下なので、各項が $${pct}\\%$ となるように $z$ を定めれば、全体を ${A*100}% 以下に抑えられる。このときの $z$ の値として、付表を用いて、${ONE}`,
+  ...mc(R,z,[z0*sd,zinv(per)*Math.SQRT2*sd,(A===0.05?1.96:1.645)*Math.SQRT2*sd,z0*2*sd],{d:3,min:0}),
+  explanation:`比較は ${m} 組。各組の有意水準は $${A*100}/${m}=${pct}\\%$(両側)。\n$X_j-X_k\\sim N(0,${2*v})$ なので $P(|Z|>z/${sq})=${fx(per,4)}$、付表より $z/${sq}\\approx${fx(z0,2)}$、$z\\approx${fx(z,3)}$。$\\sqrt2$ を掛け忘れた ${fx(z0*sd,3)} は誤り。`};
+});
+// 問21型: 一元配置の実験(実験手順・自由度・水準の母平均の信頼区間)
+const EXP=[['照明','教室','室','作業ミスの数(件)',['照明A','照明B','照明C'],[24,19,15]],['肥料','畑の区画','区画','収穫量(kg)',['肥料A','肥料B','肥料C'],[52,58,61]],['学習法','生徒','人','テストの点(点)',['講義型','演習型','反転授業'],[62,68,71]],['洗剤','布','枚','汚れの残り(%)',['洗剤A','洗剤B','洗剤C'],[30,24,21]]];
+def('g_aov1','回帰分析と分散分析','一元配置実験(手順・自由度・区間推定)',R=>{
+ const c=R.pick(EXP),k=3,r=R.pick([3,4,5]),N=k*r,sp=c[5].map(m=>m*R.ri(90,110)/100),sd=Math.abs(sp[0]-sp[2])*R.ri(15,35)/100;
+ const y=sp.map(m=>Array.from({length:r},()=>+(m+sd*nrm(R)).toFixed(1))),ms=y.map(mean),g=mean(y.flat());
+ const ssa=r*sum(ms.map(m=>(m-g)**2)),sse=sum(y.map((row,j)=>sum(row.map(v=>(v-ms[j])**2)))),mse=sse/(N-k);
+ const fig=tbl([c[0],...Array.from({length:r},(_,i)=>`${i+1}回目`)],y.map((row,j)=>[`${j+1}(${c[4][j]})`,...row.map(v=>fx(v,1))]),`実験結果(${c[3]})`)+tbl(['要因','平方和','自由度','平均平方','$F_0$'],[[c[0],fx(ssa,1),'−','−','−'],['誤差E',fx(sse,1),'−','−',''],['総',fx(ssa+sse,1),'−','','']],'分散分析表');
+ const stem=`${k}種類の${c[0]}(${c[4].join('、')})の効果を比べるため、繰り返し ${r} 回の一元配置実験を行い、合計 ${N} 回測定した。データの構造は $y_{ji}=\\mu+\\alpha_j+\\epsilon_{ji}$($\\epsilon_{ji}$ は独立に $N(0,\\sigma^2)$ に従う)とする。\n`;
+ const v=R.pick(['df','ci','ci','plan']);
+ if(v==='plan'){const u=c[1],n=c[2];
+  const ok=`全体の${u}から無作為に ${N}${n}を選び、それらに ${k} 種類の${c[0]}を無作為に割り付け、測定の順序も無作為に決めて実施した。`;
+  return{question:`${stem}この実験の手順として、${ONE}`,...mt(R,ok,[`${u}を古い順に並べ、最初の ${r}${n}に${c[0]}1、次の ${r}${n}に${c[0]}2、最後の ${r}${n}に${c[0]}3を施し、この順序で測定した。`,`${u}を古い順に ${N}${n}選び、${c[0]}を無作為に割り付けたうえで、${c[0]}1の${u}から順に測定した。`,`1つの${u}に、無作為に決めた順序で ${k} 種類の${c[0]}を施し、それぞれ ${r} 回ずつ測定を繰り返した。`,`1つの${u}に、作業時間の短い順に${c[0]}を施し、それぞれ ${r} 回ずつ測定を繰り返した。`]),
+   explanation:`フィッシャーの3原則(無作為化・反復・局所管理)。対象の選び方・処理の割り付け・測定の順序をすべて無作為にすることで、古さや時間の経過などの影響が特定の処理に偏らないようにする。1つの対象に処理を重ねると、処理の効果が分離できない。`}}
+ if(v==='df'){const ans=`$\\nu_1=${k-1},\\ \\nu_2=${N-k}$`,W2=[[1,N-k],[k-1,N-1],[k,N-k-1],[k,N-k],[k-1,N-k+1]].map(([a,b])=>`$\\nu_1=${a},\\ \\nu_2=${b}$`);
+  return{fig,question:`${stem}分散分析表を完成させるには、検定統計量 $F_0$ が従う $F$ 分布の自由度 $(\\nu_1,\\nu_2)$ が必要である。自由度として、${ONE}`,...mt(R,ans,W2),
+   explanation:`水準間の自由度は 水準数−1=${k-1}、誤差の自由度は 総数−水準数=${N}−${k}=${N-k}。全体の自由度 ${N-1} はその和。`}}
+ const j=R.ri(0,k-1),t=tq(N-k,0.025),se=Math.sqrt(mse/r),h=t*se,ys=ms[j];
+ const wide=R.shuf([t*Math.sqrt(2*mse/r),t*Math.sqrt(mse),tq(N-k,0.005)*se]),nar=R.shuf([1.96*se,t*Math.sqrt(mse/N),t*se/2,tq(N-k,0.05)*se]),kw=R.ri(0,3),hs=[h,...wide.slice(0,kw),...nar.slice(0,4-kw)].sort((a,b)=>a-b);
+ const C=hs.map(x=>`$[${fx(ys-x,1)},\\ ${fx(ys+x,1)}]$`);if(new Set(C).size<5)return null;
+ return{fig,question:`${stem}${c[0]}${j+1}(${c[4][j]})を施したときの母平均 $\\mu+\\alpha_{${j+1}}$ の 95% 信頼区間として、付表を用いて、${ONE}`,choices:C,answer:hs.indexOf(h)+1,fixed:true,
+  explanation:`点推定値は水準の標本平均 $${fx(ys,2)}$。誤差の平均平方 $=${fx(sse,1)}/${N-k}=${fx(mse,2)}$ が $\\sigma^2$ の推定値。\n$${fx(ys,2)}\\pm t_{0.025}(${N-k})\\sqrt{\\dfrac{${fx(mse,2)}}{${r}}}=${fx(ys,2)}\\pm${t}\\times${fx(se,3)}=${fx(ys,2)}\\pm${fx(h,2)}$。自由度は誤差の自由度 ${N-k} を使う。他の選択肢は 1.96 や 90%・99% の点、$\\sqrt{MSE/${N}}$ などを使ったもの。`};
+});
+// 問22型: 重回帰の出力表(t値の穴埋め・係数の解釈・モデルの比較)
+const VARS=[['log(1人当たり所得)',0],['平均年齢',0],['log(人口密度)',0],['15歳未満人口の割合',0],['政令指定都市ダミー',1],['log(気温)',0],['持ち家率',0]];
+def('g_mreg','回帰分析と分散分析','重回帰の出力表(解釈・モデル比較)',R=>{
+ const n=R.pick([40,45,47,50]),dum=VARS[4],others=R.shuf(VARS.filter(x=>!x[1])).slice(0,4),vs=[...others,dum],p=vs.length,df=n-p-1;
+ const rows=vs.map((x,i)=>{const se=R.ri(30,600)/1000,tt=R.pick([1,1,-1])*(i<2?R.ri(25,90)/10:R.ri(2,22)/10),est=x[1]?-R.ri(10,35)/100:tt*se*(1+R.ri(-40,40)/1000);return{n:x[0],est:+fx(est,3),se:x[1]?+fx(Math.abs(est)/R.ri(22,40)*10,3):+fx(se,3)}});
+ rows.forEach(r=>{r.t=r.est/r.se;r.p=tp2(r.t,df)});
+ const c0={n:'定数項',est:+fx(-R.ri(30,120)/10,3),se:+fx(R.ri(15,45)/10,3)};c0.t=c0.est/c0.se;c0.p=tp2(c0.t,df);
+ const R2=R.ri(70,90)/100,adj=(r2,k)=>1-(1-r2)*(n-1)/(n-k-1),Fs=(r2,k)=>r2/k/((1-r2)/(n-k-1));
+ const show=(rs,r2,k,blank,cc=c0)=>tbl(['','Estimate','Std. Error','t value','Pr(>|t|)'],[cc,...rs].map(r=>[r.n,fx(r.est,3),fx(r.se,3),r===blank?'(ア)':fx(r.t,3),pfmt(r.p)]))+`<div class="meta">Multiple R-squared: ${fx(r2,4)}, Adjusted R-squared: ${fx(adj(r2,k),4)}<br>F-statistic: ${fx(Fs(r2,k),2)} on ${k} and ${n-k-1} DF</div>`;
+ const stem=`ある被説明変数(都道府県別の1人当たり施設数の対数値)を、次の説明変数で重回帰モデルにより推定した(データ数 $n=${n}$)。政令指定都市ダミーは、政令指定都市をもつ都道府県で1、それ以外で0をとる。`;
+ const v=R.pick(['t','int','cmp']);
+ if(v==='t'){const b=R.r()<0.5?c0:R.pick(rows);
+  return{fig:show(rows,R2,p,b),question:`${stem}次の表はモデルの出力結果である。(ア)に入る数値はいくらか。${ONE}`,...mc(R,b.t,[b.se/b.est,b.est*b.se,-b.t,b.t/Math.sqrt(n)],{d:3}),
+   explanation:`t値 $=\\dfrac{\\text{Estimate}}{\\text{Std. Error}}=\\dfrac{${fx(b.est,3)}}{${fx(b.se,3)}}=${fx(b.t,3)}$。`}}
+ if(v==='int'){const d=rows[p-1],pct=Math.round(Math.abs(Math.exp(d.est)-1)*10),ns=rows.filter(r=>r.p>0.1),pos=rows.filter(r=>r.p<0.05&&!r.n.includes('ダミー'));if(!ns.length||!pos.length||pct<1)return null;const q=R.pick(pos),nv=R.pick(ns);
+  const ok=`他の変数が同じ値である場合、政令指定都市をもつ都道府県は、被説明変数(1人当たり施設数)が約${pct}割少ない傾向にある。`;
+  return{fig:show(rows,R2,p,null),question:`${stem}次の表はモデルの出力結果である。被説明変数は対数値であることに注意して、結果の説明として${ONE}`,...mt(R,ok,['定数項は、P値が最も小さいため、最も説明力がある説明変数である。',`有意水準を10%とした場合、${nv.n}にかかる係数がゼロであるという帰無仮説は棄却される。`,`他の変数が同じ値である場合、${q.n}が${q.est>0?'低い':'高い'}都道府県では、1人当たり施設数が多い傾向にある。`,'統計的な有意性が確認されたいくつかの説明変数については、被説明変数への因果関係が存在すると考えられる。']),
+   explanation:`被説明変数が対数なので、ダミーの係数 $${fx(d.est,3)}$ は $e^{${fx(d.est,3)}}\\approx${fx(Math.exp(d.est),3)}$ 倍、つまり約${pct}割少ないことを表す。\n定数項は説明変数ではない。${nv.n}のP値 ${pfmt(nv.p)} は 0.1 より大きいので棄却されない。${q.n}の係数は${q.est>0?'正':'負'}。有意性は因果関係を意味しない。`}}
+ // モデル比較: Aは全変数、Bは一部の変数を除いたモデル
+ const drop=rows.filter(r=>r.p>0.05&&!r.n.includes('ダミー'));if(!drop.length)return null;
+ const dropAll=R.r()<0.6,dr=dropAll?drop:drop.slice(0,Math.max(1,drop.length-1)),keepNs=!dropAll&&drop.length>1;
+ const rb=rows.filter(r=>!dr.includes(r)).map(r=>{const se=+fx(r.se*R.ri(85,105)/100,3),est=+fx(r.est*R.ri(85,115)/100,3);return{n:r.n,est,se,t:est/se,p:tp2(est/se,n-(p-dr.length)-1)}}),kb=rb.length;
+ const aA=adj(R2,p),better=R.r()<0.5,aT=better?aA+R.ri(1,6)/1000:aA-R.ri(2,20)/1000,R2b=1-(1-aT)*(n-kb-1)/(n-1);if(R2b>=R2)return null;const aB=adj(R2b,kb);
+ const cA=TB.f05.v[TB.f05.df2.indexOf(n-p-1)]?.[TB.f05.df1.indexOf(p)]??2.45,t=[dr.length===drop.length,aB>aA,Fs(R2,p)>cA&&Fs(R2b,kb)>cA];
+ const fig=`<p class="meta">モデルA(すべての説明変数)</p>`+show(rows,R2,p,null)+`<p class="meta">モデルB(一部の説明変数を除いたもの)</p>`+show(rb,R2b,kb,null,(()=>{const e=+fx(c0.est*R.ri(85,115)/100,3),se=+fx(c0.se*R.ri(85,105)/100,3);return{n:'定数項',est:e,se,t:e/se,p:tp2(e/se,n-kb-1)}})());
+ return{fig,question:`${stem}すべての説明変数を用いたモデルA と、一部の説明変数を除いたモデルB の出力結果が次の表である。\nⅠ. モデルBは、モデルAの結果において有意水準5%で有意でない説明変数をすべて除いたモデルである。\nⅡ. 自由度調整済み決定係数を基準とすると、モデルBが選択される。\nⅢ. モデルAとBの両方において、説明変数にかかるすべての係数がゼロであるという帰無仮説は有意水準5%で棄却される。\n${CMBQ}`,...combo(R,t),
+  explanation:`Ⅰ: モデルAで5%有意でない説明変数は ${drop.map(r=>r.n).join('、')}。${t[0]?'すべて除かれているので正しい。':'Bに残っているものがあるので誤り。'}\nⅡ: 調整済み $R^2$ は A ${fx(aA,4)}、B ${fx(aB,4)} なので${t[1]?'Bが選ばれ正しい':'Aが選ばれ誤り'}。決定係数そのものは変数の多いAが常に大きい。\nⅢ: F統計量は A ${fx(Fs(R2,p),2)}、B ${fx(Fs(R2b,kb),2)} で、いずれも5%の棄却点(Aでは約 ${cA})より大きいので正しい。`};
+});
 
 // ---------- 公開API ----------
 function generate(id,seed){

@@ -68,3 +68,4 @@ code{font-size:12px;background:var(--bg);padding:1px 4px;border-radius:4px}
 .cx{font-size:18px;word-break:break-all;font-variant-numeric:tabular-nums}.cr{color:var(--ac);font-size:20px;font-weight:700;min-height:28px}
 .ck{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.ck button{padding:12px 0;font-size:17px}.ck .op{background:color-mix(in srgb,var(--ac) 15%,var(--card))}
 .figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px}
+table.ft td,table.ft th{white-space:nowrap}table.ft{font-size:12px}
